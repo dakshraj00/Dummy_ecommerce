@@ -1,0 +1,26 @@
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+ 
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy
+alembic
+ 
+# ── Data Validation ───────────────────────────────────────────────────────────
+pydantic
+pydantic-settings
+ 
+# ── Environment Variables ─────────────────────────────────────────────────────
+python-dotenv
+
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langgraph
+
+httpx
+requests
+
+ 
+psycopg2-binary

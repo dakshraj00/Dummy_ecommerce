@@ -1,0 +1,559 @@
+import { useState, useEffect, useRef } from "react";
+
+const API = "http://127.0.0.1:8000";
+
+// ─── Severity badge ─────────────────────────────────────────────────────────
+const SeverityBadge = ({ severity }) => {
+  const map = {
+    critical: "bg-red-500/15 text-red-400 border-red-500/30",
+    high:     "bg-orange-500/15 text-orange-400 border-orange-500/30",
+    medium:   "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+    low:      "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  };
+  const cls = map[(severity || "").toLowerCase()] || "bg-white/10 text-white/40 border-white/10";
+  return (
+    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest uppercase border ${cls}`}>
+      {severity || "—"}
+    </span>
+  );
+};
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+const Toast = ({ toast }) =>
+  toast ? (
+    <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-lg border text-sm font-semibold shadow-2xl transition-all
+      ${toast.type === "error"
+        ? "bg-red-950 border-red-500/50 text-red-300"
+        : "bg-slate-800 border-emerald-500/50 text-emerald-300"}`}>
+      {toast.type === "error" ? "✕ " : "✓ "}{toast.msg}
+    </div>
+  ) : null;
+
+// ─── Stat Card ───────────────────────────────────────────────────────────────
+const StatCard = ({ label, value, sub, accent }) => {
+  const styles = {
+    amber:   "from-amber-500/10   border-amber-500/20   text-amber-400",
+    sky:     "from-sky-500/10     border-sky-500/20     text-sky-400",
+    rose:    "from-rose-500/10    border-rose-500/20    text-rose-400",
+    emerald: "from-emerald-500/10 border-emerald-500/20 text-emerald-400",
+  };
+  const s = styles[accent] || styles.sky;
+  return (
+    <div className={`relative rounded-2xl border bg-gradient-to-br ${s} to-transparent p-5 overflow-hidden`}>
+      <p className={`text-[10px] tracking-[0.25em] uppercase font-bold mb-1 ${s.split(" ")[2]}`}>{label}</p>
+      <p className="text-4xl font-black text-white leading-none">{value}</p>
+      {sub && <p className="text-xs text-white/30 mt-1">{sub}</p>}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ORDERS SECTION
+// ══════════════════════════════════════════════════════════════════════════════
+function OrdersSection({ toast }) {
+  const [orders,     setOrders]     = useState([]);
+  const [form,       setForm]       = useState({ customer_name: "", product_name: "", quantity: "", price: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [editId,     setEditId]     = useState(null);
+  const [editStatus, setEditStatus] = useState("");
+
+  const load = async () => {
+    try {
+      const r = await fetch(`${API}/orders?limit=100`);
+      setOrders(await r.json());
+    } catch { toast("Failed to load orders", "error"); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await fetch(`${API}/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer_name: form.customer_name,
+          product_name:  form.product_name,
+          quantity:      parseInt(form.quantity),
+          price:         parseFloat(form.price),
+        }),
+      });
+      setForm({ customer_name: "", product_name: "", quantity: "", price: "" });
+      toast("Order created");
+      load();
+    } catch { toast("Failed to create order", "error"); }
+    finally { setSubmitting(false); }
+  };
+
+  const del = async (id) => {
+    setDeletingId(id);
+    try {
+      await fetch(`${API}/orders/${id}`, { method: "DELETE" });
+      toast("Order deleted");
+      load();
+    } catch { toast("Delete failed", "error"); }
+    finally { setDeletingId(null); }
+  };
+
+  const updateStatus = async (id) => {
+    try {
+      await fetch(`${API}/orders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: editStatus }),
+      });
+      toast("Status updated");
+      setEditId(null);
+      load();
+    } catch { toast("Update failed", "error"); }
+  };
+
+  const revenue = orders.reduce((s, o) => s + (o.price    || 0), 0);
+  const items   = orders.reduce((s, o) => s + (o.quantity  || 0), 0);
+
+  const statusColor = (st) => {
+    const m = {
+      pending:    "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
+      processing: "text-sky-400    border-sky-500/30    bg-sky-500/10",
+      shipped:    "text-violet-400 border-violet-500/30 bg-violet-500/10",
+      delivered:  "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+      cancelled:  "text-red-400    border-red-500/30    bg-red-500/10",
+    };
+    return m[(st || "pending").toLowerCase()] || m.pending;
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Orders" value={orders.length}                                         accent="amber"   />
+        <StatCard label="Revenue"      value={`$${revenue.toFixed(0)}`}        sub="all time"        accent="emerald" />
+        <StatCard label="Items Sold"   value={items}                                                 accent="sky"     />
+        <StatCard label="Avg. Order"   value={orders.length ? `$${(revenue/orders.length).toFixed(0)}` : "—"} accent="rose" />
+      </div>
+
+      {/* Create form */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <h3 className="text-[10px] tracking-[0.3em] uppercase text-amber-400 font-bold mb-5 flex items-center gap-2">
+          <span className="w-3 h-px bg-amber-400" /> New Order
+        </h3>
+        <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { n: "customer_name", p: "Customer name"  },
+            { n: "product_name",  p: "Product name"   },
+            { n: "quantity",      p: "Quantity",  t: "number" },
+            { n: "price",         p: "Price ($)", t: "number" },
+          ].map(({ n, p, t = "text" }) => (
+            <input key={n} name={n} type={t} placeholder={p} value={form[n]}
+              onChange={e => setForm({ ...form, [n]: e.target.value })} required
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white
+                placeholder-white/25 focus:outline-none focus:border-amber-500/60 focus:bg-amber-500/5 transition-all"
+            />
+          ))}
+          <button type="submit" disabled={submitting}
+            className="col-span-2 md:col-span-4 mt-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400
+              text-black text-sm font-black tracking-widest uppercase transition-all disabled:opacity-40
+              flex items-center justify-center gap-2">
+            {submitting
+              ? <span className="w-4 h-4 rounded-full border-2 border-black/30 border-t-black animate-spin" />
+              : "＋ Create Order"}
+          </button>
+        </form>
+      </div>
+
+      {/* Orders table */}
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        {/* Column headers */}
+        <div className="grid grid-cols-[0.4fr_1.1fr_1.2fr_0.55fr_0.75fr_1.1fr_auto] px-5 py-3
+          text-[10px] tracking-[0.2em] uppercase text-white/30 border-b border-white/5 bg-white/[0.02]">
+          <span>ID</span>
+          <span>Customer</span>
+          <span>Product</span>
+          <span>Qty</span>
+          <span>Price</span>
+          <span>Status</span>
+          <span></span>
+        </div>
+
+        {orders.length === 0
+          ? <div className="py-16 text-center text-white/20 text-sm tracking-widest uppercase">No orders yet</div>
+          : orders.map((o) => (
+          <div key={o.id}
+            className="grid grid-cols-[0.4fr_1.1fr_1.2fr_0.55fr_0.75fr_1.1fr_auto] px-5 py-3.5 items-center
+              border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors group">
+
+            <p className="text-[11px] font-mono text-white/30">#{String(o.id).padStart(4,"0")}</p>
+
+            <p className="text-sm font-semibold text-white truncate pr-2">{o.customer_name}</p>
+
+            <p className="text-sm text-white/60 truncate pr-2">{o.product_name}</p>
+
+            <p className="text-sm font-mono font-bold text-sky-400">×{o.quantity}</p>
+
+            <p className="text-sm font-mono font-bold text-emerald-400">${Number(o.price).toFixed(2)}</p>
+
+            {/* Inline status editor */}
+            <div>
+              {editId === o.id ? (
+                <div className="flex gap-1.5 items-center">
+                  <select value={editStatus} onChange={e => setEditStatus(e.target.value)}
+                    className="bg-white/10 border border-white/20 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-400/50">
+                    {["pending","processing","shipped","delivered","cancelled"].map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => updateStatus(o.id)}
+                    className="w-6 h-6 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs hover:bg-emerald-500/30 flex items-center justify-center">✓</button>
+                  <button onClick={() => setEditId(null)}
+                    className="w-6 h-6 rounded-md bg-white/5 border border-white/10 text-white/30 text-xs hover:text-white/60 flex items-center justify-center">✕</button>
+                </div>
+              ) : (
+                <button onClick={() => { setEditId(o.id); setEditStatus(o.status || "pending"); }}
+                  className={`text-[11px] px-2.5 py-1 rounded-md border font-semibold tracking-wide transition-all hover:opacity-80 ${statusColor(o.status)}`}>
+                  {o.status || "pending"}
+                </button>
+              )}
+            </div>
+
+            {/* Delete */}
+            <button onClick={() => del(o.id)} disabled={deletingId === o.id}
+              className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/20
+                text-red-400 hover:bg-red-500/20 text-xs flex items-center justify-center transition-all ml-2">
+              {deletingId === o.id
+                ? <span className="w-3 h-3 rounded-full border border-red-400/30 border-t-red-400 animate-spin" />
+                : "✕"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INCIDENTS SECTION
+// ══════════════════════════════════════════════════════════════════════════════
+function IncidentsSection({ toast }) {
+  const [incidents, setIncidents] = useState([]);
+  const [lookupId,  setLookupId]  = useState("");
+  const [looking,   setLooking]   = useState(false);
+  const [found,     setFound]     = useState(null);
+
+  const loadAll = async () => {
+    try {
+      const r = await fetch(`${API}/incidents`);
+      setIncidents(await r.json());
+    } catch { toast("Failed to load incidents", "error"); }
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  const lookup = async () => {
+    if (!lookupId) return;
+    setLooking(true); setFound(null);
+    try {
+      const r = await fetch(`${API}/incident/${lookupId}`);
+      if (!r.ok) { toast("No incident for that order ID", "error"); return; }
+      const data = await r.json();
+      setFound(data);
+      loadAll(); // refresh table in case new incident was created
+    } catch { toast("Lookup failed", "error"); }
+    finally { setLooking(false); }
+  };
+
+  const critical = incidents.filter(i => (i.severity||"").toLowerCase() === "critical").length;
+  const high     = incidents.filter(i => (i.severity||"").toLowerCase() === "high").length;
+  const other    = incidents.length - critical - high;
+
+  return (
+    <div className="space-y-8">
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Incidents" value={incidents.length} accent="rose"    />
+        <StatCard label="Critical"        value={critical}         accent="rose"    />
+        <StatCard label="High"            value={high}             accent="amber"   />
+        <StatCard label="Low / Medium"    value={other}            accent="emerald" />
+      </div>
+
+      {/* Detect by order ID */}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+        <h3 className="text-[10px] tracking-[0.3em] uppercase text-rose-400 font-bold mb-4 flex items-center gap-2">
+          <span className="w-3 h-px bg-rose-400" /> Detect Incident by Order ID
+        </h3>
+        <div className="flex gap-3">
+          <input type="number" placeholder="Enter Order ID…" value={lookupId}
+            onChange={e => setLookupId(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && lookup()}
+            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white
+              placeholder-white/25 focus:outline-none focus:border-rose-500/60 transition-all"
+          />
+          <button onClick={lookup} disabled={looking}
+            className="px-6 py-2.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-white text-sm font-black
+              tracking-widest uppercase transition-all disabled:opacity-40 flex items-center gap-2">
+            {looking
+              ? <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              : "Detect"}
+          </button>
+        </div>
+
+        {found && (
+          <div className="mt-4 p-4 rounded-xl border border-rose-500/20 bg-rose-500/5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-white">Order #{found.order_id}</p>
+                <p className="text-xs text-rose-300/70 mt-0.5">{found.incident_type}</p>
+              </div>
+              <SeverityBadge severity={found.severity} />
+            </div>
+            <div className="h-px bg-white/5" />
+            <p className="text-xs text-white/50">
+              <span className="text-white/30 uppercase tracking-widest text-[10px]">Cause · </span>
+              {found.possible_cause}
+            </p>
+            <p className="text-xs text-white/50">
+              <span className="text-white/30 uppercase tracking-widest text-[10px]">Recommendation · </span>
+              {found.recommendation}
+            </p>
+            <p className="text-[10px] text-white/20">{found.detected_at}</p>
+          </div>
+        )}
+      </div>
+
+      {/* All incidents table */}
+      <div className="rounded-2xl border border-white/10 overflow-hidden">
+        <div className="grid grid-cols-[0.4fr_1fr_1fr_2fr_2fr_0.8fr] px-5 py-3
+          text-[10px] tracking-[0.2em] uppercase text-white/30 border-b border-white/5 bg-white/[0.02]">
+          <span>Order</span><span>Type</span><span>Severity</span>
+          <span>Cause</span><span>Recommendation</span><span>Date</span>
+        </div>
+
+        {incidents.length === 0
+          ? <div className="py-16 text-center text-white/20 text-sm tracking-widest uppercase">No incidents logged</div>
+          : incidents.map((inc, i) => (
+          <div key={i} className="grid grid-cols-[0.4fr_1fr_1fr_2fr_2fr_0.8fr] px-5 py-4 items-start
+            border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors gap-3">
+            <p className="text-sm font-mono font-bold text-white/60">#{inc.order_id}</p>
+            <p className="text-xs text-white/70 font-semibold leading-relaxed">{inc.incident_type}</p>
+            <div><SeverityBadge severity={inc.severity} /></div>
+            <p className="text-xs text-white/40 leading-relaxed">{inc.possible_cause}</p>
+            <p className="text-xs text-white/40 leading-relaxed">{inc.recommendation}</p>
+            <p className="text-[10px] text-white/25 mt-0.5">
+              {inc.detected_at ? new Date(inc.detected_at).toLocaleDateString() : "—"}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AI CHAT SECTION
+// ══════════════════════════════════════════════════════════════════════════════
+function ChatSection({ toast }) {
+  const [messages, setMessages] = useState([
+    { role: "ai", text: "Hi! I'm your AI assistant. Ask me anything about orders, incidents, or your store." }
+  ]);
+  const [input,   setInput]   = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const send = async () => {
+    const q = input.trim();
+    if (!q || loading) return;
+    setInput("");
+    setMessages(m => [...m, { role: "user", text: q }]);
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/ai/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+      const data = await r.json();
+      setMessages(m => [...m, { role: "ai", text: data.answer }]);
+    } catch {
+      setMessages(m => [...m, { role: "ai", text: "⚠ Could not reach the AI agent. Is your backend running?" }]);
+    } finally { setLoading(false); }
+  };
+
+  const quickPrompts = [
+    "Summarize recent orders",
+    "Any critical incidents?",
+    "Which products are top sellers?",
+    "What should I focus on today?",
+  ];
+
+  return (
+    <div className="flex flex-col rounded-2xl border border-white/10 overflow-hidden bg-[#0c0c14]"
+      style={{ height: "calc(100vh - 230px)", minHeight: "520px" }}>
+
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-white/10 flex items-center gap-3 bg-white/[0.02]">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-white text-sm font-black">
+          ◆
+        </div>
+        <div>
+          <p className="text-sm font-bold text-white">AI Assistant</p>
+          <p className="text-[10px] text-white/30 tracking-widest uppercase">LangChain Agent · Always on</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[10px] text-emerald-400 tracking-widest uppercase">Online</span>
+        </div>
+      </div>
+
+      {/* Quick prompts */}
+      <div className="px-4 pt-3 pb-1 flex flex-wrap gap-2">
+        {quickPrompts.map(p => (
+          <button key={p} onClick={() => setInput(p)}
+            className="text-[11px] px-3 py-1.5 rounded-full border border-white/10 bg-white/5 text-white/40
+              hover:border-violet-500/40 hover:text-violet-400 transition-all">
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
+            <div className={`w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5
+              ${m.role === "ai"
+                ? "bg-gradient-to-br from-violet-500 to-cyan-500 text-white"
+                : "bg-amber-500 text-black"}`}>
+              {m.role === "ai" ? "◆" : "U"}
+            </div>
+            <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed
+              ${m.role === "ai"
+                ? "bg-white/[0.06] border border-white/10 text-white/80"
+                : "bg-amber-500/15 border border-amber-500/20 text-amber-100"}`}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-xs font-bold text-white">◆</div>
+            <div className="bg-white/[0.06] border border-white/10 rounded-2xl px-4 py-3 flex gap-1.5 items-center">
+              {[0,1,2].map(d => (
+                <span key={d} className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce"
+                  style={{ animationDelay: `${d*150}ms` }} />
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input bar */}
+      <div className="px-4 pb-4">
+        <div className="flex gap-2 bg-white/5 border border-white/10 rounded-xl p-2 focus-within:border-violet-500/40 transition-colors">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+            placeholder="Ask about orders, incidents, trends…"
+            className="flex-1 bg-transparent px-2 py-1.5 text-sm text-white placeholder-white/25 focus:outline-none"
+          />
+          <button onClick={send} disabled={loading || !input.trim()}
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-cyan-600
+              hover:from-violet-500 hover:to-cyan-500 text-white text-xs font-black
+              tracking-widest uppercase transition-all disabled:opacity-30">
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROOT APP
+// ══════════════════════════════════════════════════════════════════════════════
+const TABS = [
+  { id: "orders",    label: "Orders",    icon: "◈" },
+  { id: "incidents", label: "Incidents", icon: "⚑" },
+  { id: "ai",        label: "AI Agent",  icon: "◆" },
+];
+
+export default function App() {
+  const [tab,       setTab]       = useState("orders");
+  const [toastData, setToastData] = useState(null);
+
+  const toast = (msg, type = "success") => {
+    setToastData({ msg, type });
+    setTimeout(() => setToastData(null), 3000);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#08080f] text-white" style={{ fontFamily: "'DM Mono','Fira Code',monospace" }}>
+      {/* Ambient glows */}
+      <div className="fixed top-0 left-1/4 w-[600px] h-[300px] bg-violet-700/10 blur-[150px] pointer-events-none rounded-full" />
+      <div className="fixed bottom-0 right-1/4 w-[500px] h-[250px] bg-cyan-700/8 blur-[150px] pointer-events-none rounded-full" />
+      {/* Grid overlay */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.025]"
+        style={{
+          backgroundImage: "linear-gradient(white 1px,transparent 1px),linear-gradient(90deg,white 1px,transparent 1px)",
+          backgroundSize: "50px 50px",
+        }} />
+
+      <Toast toast={toastData} />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-10">
+        {/* Header */}
+        <div className="flex items-end justify-between mb-10">
+          <div>
+            <p className="text-[10px] tracking-[0.4em] uppercase text-amber-400 mb-1">⬡ nerf_ecom / command center</p>
+            <h1 className="text-5xl font-black tracking-tight leading-none">
+              MAZE
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-rose-400 to-violet-400"> OPS</span>
+            </h1>
+          </div>
+          <div className="hidden md:flex flex-col items-end gap-1">
+            <p className="text-[10px] text-white/20 tracking-widest uppercase">Backend</p>
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs text-emerald-400 font-semibold">FastAPI · {API}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mb-8 p-1 bg-white/[0.03] border border-white/10 rounded-xl w-fit">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold tracking-widest uppercase transition-all
+                ${tab === t.id
+                  ? "bg-white/10 text-white shadow-lg"
+                  : "text-white/30 hover:text-white/60 hover:bg-white/5"}`}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div key={tab} style={{ animation: "fadeUp 0.3s ease forwards" }}>
+          {tab === "orders"    && <OrdersSection    toast={toast} />}
+          {tab === "incidents" && <IncidentsSection toast={toast} />}
+          {tab === "ai"        && <ChatSection      toast={toast} />}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  );
+}
