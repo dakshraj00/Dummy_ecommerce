@@ -1,4 +1,4 @@
-# 🛒 Maze OPS — AI-Powered Order Management System
+# 🛒 — AI-Powered Order Management System
 
 An intelligent full-stack e-commerce operations dashboard. Manage orders, automatically detect incidents, and chat with an AI assistant that knows your store data — all in one place.
 
