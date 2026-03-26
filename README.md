@@ -91,10 +91,7 @@ maze_ke_liye/
 
 ## 🚀 Getting Started
 
-### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- [Git](https://git-scm.com/) installed
 
 ### 1. Clone the repository
 
@@ -228,4 +225,4 @@ MIT License — feel free to use this project however you like.
 
 ---
 
-Built with ❤️ by [Raj](https://github.com/yourusername)
+Built with ❤️ by [Daksh Raj](https://github.com/dakshraj00)
