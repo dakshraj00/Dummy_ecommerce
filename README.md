@@ -177,24 +177,7 @@ npm run dev
 
 ---
 
-## 🐳 Docker Commands
 
-```bash
-# Start everything
-docker-compose up --build
-
-# Run in background
-docker-compose up --build -d
-
-# View logs
-docker-compose logs -f
-
-# Stop containers
-docker-compose down
-
-# Stop and wipe database volume
-docker-compose down -v
-```
 
 ---
 
